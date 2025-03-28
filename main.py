@@ -5,240 +5,293 @@ import time
 
 app = Flask(__name__)
 
-# Kullanıcıların ilaçlarını saklamak için bellek içi veri yapısı
-kullanici_ilaclari = {}
+users_medications = {}
 
-# Genişletilmiş ilaç etkileşim veritabanı (Türkçe versiyon)
-ilac_etkilesimleri = {
+
+drug_interactions_db = {
+
     ('Warfarin', 'Aspirin'): {
-        'uyari': 'Bu iki ilacın birlikte kullanılması kanama riskini artırabilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Doktorunuza danışmadan birlikte kullanmayınız.'
+        'warning': 'Concurrent use may increase the risk of bleeding.',
+        'severity': 'high',
+        'advice': 'Consult your physician before using both drugs together.'
     },
-    ('Lisinopril', 'İbuprofen'): {
-        'uyari': 'İbuprofen, Lisinopril’in tansiyon düşürücü etkisini azaltabilir ve böbrek sorunlarına yol açabilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Sık kullanımdan kaçının ve doktorunuza danışın.'
+    ('Lisinopril', 'Ibuprofen'): {
+        'warning': 'Ibuprofen may reduce the blood pressure-lowering effect of Lisinopril and increase kidney risks.',
+        'severity': 'medium',
+        'advice': 'Use with caution and consult your healthcare provider.'
     },
-    ('Simvastatin', 'Greyfurt Suyu'): {
-        'uyari': 'Greyfurt suyu, Simvastatin’in kandaki seviyesini artırarak yan etki riskini yükseltebilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Greyfurt tüketiminden kaçının.'
+    ('Simvastatin', 'Grapefruit Juice'): {
+        'warning': 'Grapefruit juice can increase Simvastatin levels, raising the risk of side effects.',
+        'severity': 'medium',
+        'advice': 'Avoid grapefruit products while on Simvastatin.'
     },
-    ('Metformin', 'Cimetidin'): {
-        'uyari': 'Cimetidin, Metformin’in kandaki seviyesini artırarak yan etki riskini yükseltebilir.',
-        'seviyesi': 'düşük',
-        'oneriler': 'Kan şekeri seviyenizi takip ediniz.'
+    ('Metformin', 'Cimetidine'): {
+        'warning': 'Cimetidine may increase blood levels of Metformin, potentially raising side effect risks.',
+        'severity': 'low',
+        'advice': 'Monitor blood sugar levels and consult your doctor if unusual symptoms occur.'
     },
-    ('Nitrogliserin', 'Sildenafil'): {
-        'uyari': 'Bu iki ilaç bir arada kullanılırsa ciddi tansiyon düşüklüğüne neden olabilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Kesinlikle birlikte kullanmayınız, alternatif tedavi seçenekleri için doktorunuza danışınız.'
+    ('Warfarin', 'Amiodarone'): {
+        'warning': 'Amiodarone may increase Warfarin effects, leading to an elevated bleeding risk.',
+        'severity': 'high',
+        'advice': 'Frequent INR monitoring is recommended if these drugs are used together.'
     },
-    ('ACE İnhibitörleri', 'Potasyum Takviyeleri'): {
-        'uyari': 'Potasyum seviyesinin tehlikeli derecede yükselmesine neden olabilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Kan potasyum seviyenizi düzenli olarak kontrol ettiriniz.'
+    ('Digoxin', 'Amiodarone'): {
+        'warning': 'Amiodarone may increase Digoxin levels, raising the risk of toxicity.',
+        'severity': 'high',
+        'advice': 'Monitor Digoxin levels closely and adjust the dose if necessary.'
     },
-    ('Parasetamol', 'Alkol'): {
-        'uyari': 'Alkol ile birlikte kullanımı karaciğer hasarına yol açabilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Alkol tüketiminden kaçının.'
+    ('Sildenafil', 'Nitroglycerin'): {
+        'warning': 'Combined use can lead to severe hypotension.',
+        'severity': 'high',
+        'advice': 'Never use these medications together; seek medical advice for alternatives.'
     },
-    ('Aspirin', 'Klopidogrel'): {
-        'uyari': 'Bu ilaçlar birlikte kullanıldığında kanama riskini artırabilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Yakın takiple kullanınız.'
+    ('ACE Inhibitors', 'Potassium Supplements'): {
+        'warning': 'ACE inhibitors can increase potassium levels, and together with supplements, this may lead to hyperkalemia.',
+        'severity': 'medium',
+        'advice': 'Monitor potassium levels regularly.'
+    },
+    ('Omeprazole', 'Clopidogrel'): {
+        'warning': 'Omeprazole may reduce the effectiveness of Clopidogrel.',
+        'severity': 'medium',
+        'advice': 'Consider alternative proton pump inhibitors if Clopidogrel is essential.'
+    },
+    # 20 Additional interactions
+    ('Acetaminophen', 'Alcohol'): {
+        'warning': 'Combined use may increase the risk of liver damage.',
+        'severity': 'high',
+        'advice': 'Avoid excessive alcohol consumption while taking acetaminophen.'
+    },
+    ('Fluoxetine', 'Phenelzine'): {
+        'warning': 'Concurrent use may cause serotonin syndrome.',
+        'severity': 'high',
+        'advice': 'Never combine SSRIs with MAO inhibitors; seek alternative treatments.'
     },
     ('Metoprolol', 'Verapamil'): {
-        'uyari': 'Kalp hızı ve kan basıncı aşırı derecede düşebilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Eş zamanlı kullanımını doktorunuza danışın.'
+        'warning': 'May cause additive effects leading to bradycardia and hypotension.',
+        'severity': 'medium',
+        'advice': 'Monitor heart rate and blood pressure closely.'
     },
-    ('Digoksin', 'Furosemid'): {
-        'uyari': 'Düşük potasyum seviyelerine bağlı olarak digoksin toksisitesi riski artabilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Elektrolit seviyenizi düzenli kontrol ettirin.'
+    ('Theophylline', 'Ciprofloxacin'): {
+        'warning': 'Ciprofloxacin can increase theophylline levels, risking toxicity.',
+        'severity': 'high',
+        'advice': 'Monitor theophylline levels if these drugs are co-administered.'
     },
-    ('Levotiroksin', 'Demir Takviyeleri'): {
-        'uyari': 'Demir, Levotiroksin emilimini azaltabilir.',
-        'seviyesi': 'düşük',
-        'oneriler': 'İki ilaç arasına zaman bırakın.'
+    ('ACE Inhibitors', 'NSAIDs'): {
+        'warning': 'NSAIDs may diminish the antihypertensive effects of ACE inhibitors and risk kidney function.',
+        'severity': 'medium',
+        'advice': 'Use the lowest effective NSAID dose and monitor kidney function.'
     },
-    ('Antibiyotikler', 'Doğum Kontrol Hapları'): {
-        'uyari': 'Antibiyotikler doğum kontrol haplarının etkinliğini azaltabilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Ek önlemler kullanınız.'
+    ('Tetracycline', 'Dairy Products'): {
+        'warning': 'Dairy products can interfere with the absorption of tetracycline.',
+        'severity': 'low',
+        'advice': 'Take tetracycline on an empty stomach or avoid dairy around dosing time.'
     },
-    ('Allopurinol', 'Azatioprin'): {
-        'uyari': 'Birlikte kullanım toksisite riskini artırabilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Doktor kontrolü altında kullanınız.'
+    ('Ciprofloxacin', 'Tizanidine'): {
+        'warning': 'Concomitant use may lead to severe hypotension.',
+        'severity': 'high',
+        'advice': 'Avoid this combination to prevent dangerous blood pressure drops.'
     },
-    ('Simetidin', 'Teofilin'): {
-        'uyari': 'Simetidin, Teofilin’in yan etkilerini artırabilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Düzenli doz takibi yapınız.'
+    ('Valproate', 'Lamotrigine'): {
+        'warning': 'Increased risk of rash and toxicity when these anticonvulsants are combined.',
+        'severity': 'medium',
+        'advice': 'Monitor for signs of skin reactions and adjust dosages carefully.'
     },
-    ('Antikoagülanlar', 'NSAIDler'): {
-        'uyari': 'Kanama riski önemli ölçüde artabilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Birlikte kullanımdan kaçının.'
+    ('Lithium', 'Diuretics'): {
+        'warning': 'Diuretics can increase lithium levels, risking toxicity.',
+        'severity': 'high',
+        'advice': 'Monitor lithium levels frequently if diuretics are prescribed.'
     },
-    ('Diltiazem', 'Beta Blokerler'): {
-        'uyari': 'Aşırı kalp hızı ve kan basıncı düşüşü riski.',
-        'seviyesi': 'orta',
-        'oneriler': 'Doktor kontrolünde kullanın.'
+    ('Omeprazole', 'Methotrexate'): {
+        'warning': 'Omeprazole may increase methotrexate toxicity by reducing its clearance.',
+        'severity': 'medium',
+        'advice': 'Consider alternative acid reducers or adjust methotrexate dosing as needed.'
     },
-    ('İnsülin', 'Tiazid Diüretikler'): {
-        'uyari': 'Kan şekeri kontrolü zorlaşabilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Kan şekeri seviyenizi düzenli kontrol edin.'
+    ('Azithromycin', 'Simvastatin'): {
+        'warning': 'Azithromycin may increase simvastatin levels, raising the risk of myopathy.',
+        'severity': 'medium',
+        'advice': 'Monitor for muscle pain or weakness during therapy.'
     },
-    ('Fenitoin', 'Doğum Kontrol Hapları'): {
-        'uyari': 'Doğum kontrol haplarının etkinliği azalabilir.',
-        'seviyesi': 'orta',
-        'oneriler': 'Alternatif korunma yöntemleri kullanınız.'
+    ('Ritonavir', "St. John's Wort"): {
+        'warning': "St. John's Wort may reduce ritonavir levels by inducing liver enzymes.",
+        'severity': 'medium',
+        'advice': 'Avoid herbal supplements that affect liver enzymes when on ritonavir.'
     },
-    ('Antasitler', 'Levotiroksin'): {
-        'uyari': 'Antasitler Levotiroksin emilimini azaltabilir.',
-        'seviyesi': 'düşük',
-        'oneriler': 'Zaman aralığı bırakın.'
+    ('Levothyroxine', 'Calcium Supplements'): {
+        'warning': 'Calcium may decrease the absorption of levothyroxine.',
+        'severity': 'low',
+        'advice': 'Separate the dosing times of levothyroxine and calcium by at least 4 hours.'
     },
-    ('Diüretikler', 'Lityum'): {
-        'uyari': 'Lityum toksisitesi riski artabilir.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Serum seviyenizi düzenli kontrol ettirin.'
+    ('Warfarin', 'Cranberry Juice'): {
+        'warning': 'Cranberry juice may increase Warfarin effects, raising bleeding risk.',
+        'severity': 'medium',
+        'advice': 'Monitor INR levels closely if consuming cranberry products.'
     },
-    ('Efedrin', 'Monoamin Oksidaz İnhibitörleri'): {
-        'uyari': 'Ciddi hipertansiyon riski.',
-        'seviyesi': 'yüksek',
-        'oneriler': 'Kesinlikle birlikte kullanmayınız.'
+    ('Glimepiride', 'Alcohol'): {
+        'warning': 'Alcohol may increase the risk of hypoglycemia with Glimepiride.',
+        'severity': 'medium',
+        'advice': 'Avoid excessive alcohol intake and monitor blood sugar levels.'
+    },
+    ('Clonazepam', 'Opiates'): {
+        'warning': 'Combined use can lead to increased sedation and respiratory depression.',
+        'severity': 'high',
+        'advice': 'Use with extreme caution and under strict medical supervision.'
+    },
+    ('Zolpidem', 'Alcohol'): {
+        'warning': 'The combination can lead to excessive sedation and impaired motor function.',
+        'severity': 'medium',
+        'advice': 'Avoid alcohol when taking zolpidem to reduce sedative effects.'
+    },
+    ('Diazepam', 'Erythromycin'): {
+        'warning': 'Erythromycin may increase Diazepam levels, enhancing sedation.',
+        'severity': 'medium',
+        'advice': 'Monitor for signs of excessive sedation and adjust dosage if necessary.'
+    },
+    ('Prednisone', 'Non-selective Beta-blockers'): {
+        'warning': 'May increase blood sugar levels and reduce beta-blocker efficacy.',
+        'severity': 'medium',
+        'advice': 'Monitor blood sugar and cardiovascular status closely.'
+    },
+    ('Bupropion', 'MAO Inhibitors'): {
+        'warning': 'Concurrent use may trigger a hypertensive crisis.',
+        'severity': 'high',
+        'advice': 'Avoid combining these medications and seek alternatives if needed.'
     }
 }
 
+def get_advanced_interaction(drug1, drug2):
+    """
+    Check for advanced drug interactions between two drugs.
+    Searches for the pair in both orders.
+    """
+    key = (drug1, drug2)
+    if key in drug_interactions_db:
+        return drug_interactions_db[key]
+    key = (drug2, drug1)
+    return drug_interactions_db.get(key)
 
-def etkilesim_kontrol(ilac1, ilac2):
+def check_all_interactions(medications):
     """
-    İki ilaç arasındaki etkileşimi kontrol eder.
+    Check all pair combinations in a list of medications for potential drug interactions.
+    Returns a list of detailed warnings.
     """
-    anahtar = (ilac1, ilac2)
-    if anahtar in ilac_etkilesimleri:
-        return ilac_etkilesimleri[anahtar]
-    anahtar = (ilac2, ilac1)
-    return ilac_etkilesimleri.get(anahtar)
-
-def tum_etkilesimleri_kontrol_et(ilaclar):
-    """
-    Kullanıcının ilaçları arasındaki tüm olası etkileşimleri kontrol eder.
-    """
-    uyarilar = []
-    n = len(ilaclar)
+    warnings = []
+    n = len(medications)
     for i in range(n):
         for j in range(i + 1, n):
-            ilac1 = ilaclar[i]['ilac']
-            ilac2 = ilaclar[j]['ilac']
-            etkilesim = etkilesim_kontrol(ilac1, ilac2)
-            if etkilesim:
-                uyarilar.append({
-                    'ilaclar': (ilac1, ilac2),
-                    'uyari': etkilesim['uyari'],
-                    'seviyesi': etkilesim['seviyesi'],
-                    'oneriler': etkilesim['oneriler']
+            drug1 = medications[i]['drug']
+            drug2 = medications[j]['drug']
+            interaction = get_advanced_interaction(drug1, drug2)
+            if interaction:
+                warnings.append({
+                    'drugs': (drug1, drug2),
+                    'warning': interaction['warning'],
+                    'severity': interaction['severity'],
+                    'advice': interaction['advice']
                 })
-    return uyarilar
+    return warnings
 
-def ai_optimize_zaman(kullanici_rutini, ilac_zamani):
+def ai_optimize_time(user_routine, drug_time):
     """
-    Kullanıcının ilaç alma zamanlarını optimize eder.
-    (Bu fonksiyon şu an basit bir versiyon, ileride geliştirilebilir.)
+    Dummy AI optimization:
+    Adjust the reminder time based on user routine.
+    In a real application, analyze historical data and user habits.
     """
-    return ilac_zamani
+    return drug_time
 
-def hatirlatma_gonder(kullanici_id, ilac):
-    """Kullanıcıya hatırlatma gönderir """
-    print(f"📢 Kullanıcı {kullanici_id}: {ilac['ilac']} ilacınızı almayı unutmayın! (Doz: {ilac.get('doz', 'Bilinmiyor')})")
+def send_reminder(user_id, medication):
+    """Simulate sending a reminder to the user."""
+    print(f"Reminder for user {user_id}: Time to take {medication['drug']} "
+          f"({medication.get('dosage', 'N/A')})")
 
-def hatirlatma_zamanlayici(kullanici_id):
+def schedule_reminders(user_id):
     """
-    Kullanıcının ilaç saatlerini takip eder ve zamanı geldiğinde hatırlatma yapar.
+    A dummy scheduler to simulate reminder notifications.
+    In production, consider using a robust scheduling system or push notifications.
     """
-    def zamanlayici_dongu():
+    def reminder_loop():
         while True:
-            su_an = datetime.now()
-            ilaclar = kullanici_ilaclari.get(kullanici_id, [])
-            for ilac in ilaclar:
-                hatirlatma_saati = ilac['zaman']
-                if su_an <= hatirlatma_saati < su_an + timedelta(minutes=1):
-                    hatirlatma_gonder(kullanici_id, ilac)
-            time.sleep(60)  # 1 dakika sonra tekrar kontrol et
+            now = datetime.now()
+            meds = users_medications.get(user_id, [])
+            for med in meds:
+                reminder_time = med['time']
+                if now <= reminder_time < now + timedelta(minutes=1):
+                    send_reminder(user_id, med)
+            time.sleep(60)  # Check every minute
 
-    t = threading.Thread(target=zamanlayici_dongu, daemon=True)
+    t = threading.Thread(target=reminder_loop, daemon=True)
     t.start()
 
-@app.route('/ilac_ekle', methods=['POST'])
-def ilac_ekle():
+@app.route('/add_medication', methods=['POST'])
+def add_medication():
     """
-    Kullanıcının ilaçlarını ekleyebileceği endpoint.
+    Endpoint to add a medication.
+    Expects JSON data with:
+      - user_id: unique identifier for the user
+      - drug: medication name (e.g., "Warfarin")
+      - dosage: medication dosage (optional)
+      - time: reminder time in ISO format (e.g., "2025-03-28T15:30:00")
+      - user_routine: optional data for AI optimization
     """
-    veri = request.get_json()
-    kullanici_id = veri.get('kullanici_id')
-    ilac = veri.get('ilac')
-    doz = veri.get('doz')
-    zaman_str = veri.get('zaman')
-    kullanici_rutini = veri.get('kullanici_rutini', {})
+    data = request.get_json()
+    user_id = data.get('user_id')
+    drug = data.get('drug')
+    dosage = data.get('dosage')
+    time_str = data.get('time')
+    user_routine = data.get('user_routine', {})
 
     try:
-        hatirlatma_saati = datetime.fromisoformat(zaman_str)
+        reminder_time = datetime.fromisoformat(time_str)
     except Exception:
-        return jsonify({"hata": "Geçersiz zaman formatı. ISO formatı kullanınız."}), 400
+        return jsonify({"error": "Invalid time format. Use ISO format."}), 400
 
-    optimize_edilmis_zaman = ai_optimize_zaman(kullanici_rutini, hatirlatma_saati)
+    optimized_time = ai_optimize_time(user_routine, reminder_time)
 
-    yeni_ilac = {
-        'ilac': ilac,
-        'doz': doz,
-        'zaman': optimize_edilmis_zaman
+    medication = {
+        'drug': drug,
+        'dosage': dosage,
+        'time': optimized_time
     }
 
-    if kullanici_id in kullanici_ilaclari:
-        kullanici_ilaclari[kullanici_id].append(yeni_ilac)
+    if user_id in users_medications:
+        users_medications[user_id].append(medication)
     else:
-        kullanici_ilaclari[kullanici_id] = [yeni_ilac]
-        hatirlatma_zamanlayici(kullanici_id)
+        users_medications[user_id] = [medication]
+        schedule_reminders(user_id)
 
-    etkilesimler = tum_etkilesimleri_kontrol_et(kullanici_ilaclari[kullanici_id])
+    interactions = check_all_interactions(users_medications[user_id])
     return jsonify({
-        "mesaj": "İlaç başarıyla eklendi.",
-        "optimize_edilmis_zaman": optimize_edilmis_zaman.isoformat(),
-        "etkilesim_uyarilari": etkilesimler
+        "message": "Medication added successfully.",
+        "optimized_time": optimized_time.isoformat(),
+        "interaction_warnings": interactions
     })
 
-@app.route('/ilaclar', methods=['GET'])
-def ilaclari_getir():
+@app.route('/get_medications', methods=['GET'])
+def get_medications():
     """
-    Belirli bir kullanıcının ilaçlarını getirir.
+    Endpoint to retrieve all medications for a given user.
+    Query Parameter: user_id
     """
-    kullanici_id = request.args.get('kullanici_id')
-    ilaclar = kullanici_ilaclari.get(kullanici_id, [])
-    for ilac in ilaclar:
-        ilac['zaman'] = ilac['zaman'].isoformat()
-    return jsonify(ilaclar)
+    user_id = request.args.get('user_id')
+    meds = users_medications.get(user_id, [])
+    for med in meds:
+        med['time'] = med['time'].isoformat()
+    return jsonify(meds)
 
-@app.route('/etkilesim_kontrol', methods=['POST'])
-def etkilesim_kontrolu():
+@app.route('/check_interactions', methods=['POST'])
+def check_interactions():
     """
-    Gönderilen ilaç listesindeki etkileşimleri kontrol eder.
+    Endpoint to check interactions for a list of medications.
+    Expects JSON data with key "medications", a list of medication dictionaries.
     """
-    veri = request.get_json()
-    ilaclar = veri.get('ilaclar', [])
-    etkilesimler = tum_etkilesimleri_kontrol_et(ilaclar)
-    return jsonify(etkilesimler)
+    data = request.get_json()
+    medications = data.get('medications', [])
+    interactions = check_all_interactions(medications)
+    return jsonify(interactions)
 
 @app.route('/')
 def index():
-    """Sunucunun çalıştığını kontrol etmek için basit bir sayfa."""
-    return "📢 İlaç Hatırlatma ve Etkileşim Kontrol Uygulaması Çalışıyor!"
+    """Simple index route to verify the server is running."""
+    return "Advanced Medication Reminder App is Running!"
 
 if __name__ == '__main__':
     app.run(debug=True)
